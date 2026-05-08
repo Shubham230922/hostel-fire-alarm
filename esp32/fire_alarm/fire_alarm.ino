@@ -17,8 +17,8 @@
 // ─── WiFi & Firebase Config ───────────────────────────────────────────────────
 #define WIFI_SSID       "vivo Y28s 5G"
 #define WIFI_PASSWORD   "shubham2309"
-#define FIREBASE_HOST   "https://hostel-fire-alarms-default-rtdb.firebaseio.com"
-#define FIREBASE_AUTH   "AIzaSyCn76FcvmB36A3v_ry7Tpw65L9bCxTMBoM"
+#define FIREBASE_HOST   ""
+#define FIREBASE_AUTH   ""
 
 // ─── Pin Definitions ──────────────────────────────────────────────────────────
 #define DHT_PIN         4       // DHT11 data pin
