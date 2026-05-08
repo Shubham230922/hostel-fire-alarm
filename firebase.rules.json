@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "sensors": {
+      ".read":  true,
+      ".write": true
+    },
+    "alert": {
+      ".read":  true,
+      ".write": true
+    },
+    "alertLog": {
+      ".read":  true,
+      ".write": true
+    }
+  }
+}

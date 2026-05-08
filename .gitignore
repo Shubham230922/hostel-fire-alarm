@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Sensitive files - NEVER upload these
+server/.env
+server/serviceAccountKey.json
+
+# Excel (optional - contains student personal data)
+server/students.xlsx
+
+# Logs
+*.log

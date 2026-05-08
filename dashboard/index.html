@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hostel Fire Monitoring System</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Reset & Variables ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --safe:      #3fb950;
+      --danger:    #f85149;
+      --warning:   #d29922;
+      --radius:    12px;
+      --shadow:    0 4px 24px rgba(0,0,0,.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Alert Banner ──────────────────────────────────────────────────────── */
+    #alert-banner {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: linear-gradient(90deg, #7f1d1d, #991b1b, #7f1d1d);
+      background-size: 200% 100%;
+      animation: bannerSlide .4s ease, bannerPulse 1.5s ease-in-out infinite;
+      padding: 14px 24px;
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: .5px;
+      color: #fff;
+      border-bottom: 2px solid var(--danger);
+    }
+    #alert-banner.show { display: block; }
+
+    @keyframes bannerSlide {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+    @keyframes bannerPulse {
+      0%, 100% { background-position: 0% 50%; }
+      50%       { background-position: 100% 50%; }
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 1.6rem; }
+    .logo h1 { font-size: 1.2rem; font-weight: 700; }
+    .logo p  { font-size: .75rem; color: var(--muted); }
+
+    #status-badge {
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: .85rem;
+      font-weight: 700;
+      letter-spacing: .5px;
+      transition: all .3s;
+    }
+    #status-badge.safe  { background: rgba(63,185,80,.15); color: var(--safe);   border: 1px solid var(--safe); }
+    #status-badge.alert { background: rgba(248,81,73,.15); color: var(--danger); border: 1px solid var(--danger); animation: badgePulse 1s ease-in-out infinite; }
+    @keyframes badgePulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    /* ── Sensor Cards Grid ─────────────────────────────────────────────────── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: transform .2s, border-color .3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover { transform: translateY(-2px); }
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent);
+      border-radius: var(--radius) var(--radius) 0 0;
+      transition: background .3s;
+    }
+    .card.danger::before { background: var(--danger); }
+    .card.safe::before   { background: var(--safe);   }
+    .card.warning::before{ background: var(--warning);}
+
+    .card-icon { font-size: 2rem; margin-bottom: 8px; }
+    .card-label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .card-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .card-unit  { font-size: .9rem; color: var(--muted); margin-left: 4px; }
+    .card-sub   { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+
+    /* Status indicator dot */
+    .status-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--safe);
+    }
+    .status-dot.active { background: var(--danger); animation: dotPulse .8s ease-in-out infinite; }
+    @keyframes dotPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.4)} }
+
+    /* ── Bottom Grid ───────────────────────────────────────────────────────── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 768px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+    /* ── Chart Card ────────────────────────────────────────────────────────── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .chart-card h2 { font-size: 1rem; margin-bottom: 16px; color: var(--muted); }
+    .chart-wrap { position: relative; height: 260px; }
+
+    /* ── Alert Log ─────────────────────────────────────────────────────────── */
+    .log-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+    }
+    .log-card h2 { font-size: 1rem; margin-bottom: 12px; color: var(--muted); }
+    #alert-log {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #alert-log::-webkit-scrollbar { width: 4px; }
+    #alert-log::-webkit-scrollbar-track { background: var(--surface2); }
+    #alert-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .log-item {
+      background: var(--surface2);
+      border-left: 3px solid var(--danger);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: .8rem;
+      animation: fadeIn .3s ease;
+    }
+    .log-item.safe { border-left-color: var(--safe); }
+    .log-item-time { color: var(--muted); font-size: .7rem; margin-top: 4px; }
+    @keyframes fadeIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+
+    /* ── Loading Skeleton ──────────────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+      height: 2rem;
+      width: 80%;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* ── Footer ────────────────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: .75rem;
+      border-top: 1px solid var(--border);
+      margin-top: 24px;
+    }
+    #last-updated { color: var(--accent); }
+
+    /* ── Responsive header ─────────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .logo h1 { font-size: 1rem; }
+      .card-value { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Fire Alert Banner -->
+<div id="alert-banner">
+  🔥 FIRE ALERT! Evacuate immediately — Emergency: 101
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">🏠</span>
+    <div>
+      <h1>Hostel Fire Monitor</h1>
+      <p>Real-time IoT Safety System</p>
+    </div>
+  </div>
+  <div id="status-badge" class="safe">● SAFE</div>
+</header>
+
+<main>
+  <!-- Sensor Cards -->
+  <div class="cards-grid">
+
+    <!-- Temperature -->
+    <div class="card" id="card-temp">
+      <div class="card-icon">🌡️</div>
+      <div class="card-label">Temperature</div>
+      <div class="card-value" id="val-temp"><div class="skeleton"></div></div>
+      <div class="card-sub" id="sub-temp">Loading...</div>
+    </div>
+
+    <!-- Humidity -->
+    <div class="card" id="card-hum">
+      <div class="card-icon">💧</div>
+      <div class="card-label">Humidity</div>
+      <div class="card-value" id="val-hum"><div class="skeleton"></div></div>
+      <div class="card-sub">Relative Humidity</div>
+    </div>
+
+    <!-- Flame -->
+    <div class="card" id="card-flame">
+      <div class="card-icon">🔥</div>
+      <div class="card-label">Flame Sensor</div>
+      <div class="card-value" id="val-flame"><div class="skeleton"></div></div>
+      <div class="card-sub" id="sub-flame">Waiting for data...</div>
+    </div>
+
+    <!-- Gas -->
+    <div class="card" id="card-gas">
+      <div class="card-icon">💨</div>
+      <div class="card-label">Gas Sensor (MQ-2)</div>
+      <div class="card-value" id="val-gas"><div class="skeleton"></div></div>
+      <div class="card-sub" id="sub-gas">Waiting for data...</div>
+    </div>
+
+  </div>
+
+  <!-- Chart + Log -->
+  <div class="bottom-grid">
+
+    <!-- Temperature Chart -->
+    <div class="chart-card">
+      <h2>📈 Temperature History (last 20 readings)</h2>
+      <div class="chart-wrap">
+        <canvas id="tempChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Alert Log -->
+    <div class="log-card">
+      <h2>🚨 Alert Log</h2>
+      <div id="alert-log">
+        <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:20px">
+          No alerts yet
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  Last updated: <span id="last-updated">—</span> &nbsp;|&nbsp;
+  Hostel Fire Alarm System &copy; 2025
+</footer>
+
+<script>
+  // ── Firebase Config ─────────────────────────────────────────────────────────
+  // Replace with your actual Firebase project config
+  const firebaseConfig = {
+    apiKey: "AIzaSyCn76FcvmB36A3v_ry7Tpw65L9bCxTMBoM",
+  authDomain: "hostel-fire-alarms.firebaseapp.com",
+  databaseURL: "https://hostel-fire-alarms-default-rtdb.firebaseio.com",
+  projectId: "hostel-fire-alarms",
+  storageBucket: "hostel-fire-alarms.firebasestorage.app",
+  messagingSenderId: "959203192229",
+  appId: "1:959203192229:web:bfbfbcbca0ee16a747cc4c",
+  measurementId: "G-104Z9X00C5"
+  }
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // ── Chart Setup ─────────────────────────────────────────────────────────────
+  const MAX_POINTS = 20;
+  const chartLabels = [];
+  const chartData   = [];
+
+  const ctx = document.getElementById("tempChart").getContext("2d");
+  const tempChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: "Temperature (°C)",
+        data: chartData,
+        borderColor: "#58a6ff",
+        backgroundColor: "rgba(88,166,255,.1)",
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: "#58a6ff",
+        tension: 0.4,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#161b22",
+          borderColor: "#30363d",
+          borderWidth: 1,
+          titleColor: "#e6edf3",
+          bodyColor: "#8b949e",
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#8b949e", maxTicksLimit: 6, font: { size: 10 } },
+          grid:  { color: "#21262d" },
+        },
+        y: {
+          ticks: { color: "#8b949e", font: { size: 10 } },
+          grid:  { color: "#21262d" },
+          suggestedMin: 20,
+          suggestedMax: 60,
+        },
+      },
+    },
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function formatTime(isoStr) {
+    if (!isoStr) return "—";
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function setCardState(cardId, state) {
+    // state: "safe" | "danger" | "warning" | ""
+    const card = document.getElementById(cardId);
+    card.classList.remove("safe", "danger", "warning");
+    if (state) card.classList.add(state);
+  }
+
+  // ── Alert Log ────────────────────────────────────────────────────────────────
+  const alertLogEl = document.getElementById("alert-log");
+  let logInitialized = false;
+
+  function addLogEntry(text, isSafe, time) {
+    if (!logInitialized) {
+      alertLogEl.innerHTML = "";
+      logInitialized = true;
+    }
+    const item = document.createElement("div");
+    item.className = `log-item${isSafe ? " safe" : ""}`;
+    item.innerHTML = `
+      <strong>${isSafe ? "✅ CLEARED" : "🔥 ALERT"}</strong> — ${text}
+      <div class="log-item-time">${time}</div>`;
+    alertLogEl.prepend(item);
+    // Keep max 50 entries
+    while (alertLogEl.children.length > 50) alertLogEl.lastChild.remove();
+  }
+
+  // ── Sensor Data Listener ─────────────────────────────────────────────────────
+  db.ref("/sensors").on("value", (snap) => {
+    const s = snap.val();
+    if (!s) return;
+
+    const temp  = parseFloat(s.temperature || 0).toFixed(1);
+    const hum   = parseFloat(s.humidity    || 0).toFixed(1);
+    const flame = s.flame === true;
+    const gas   = s.gas   === true;
+    const ts    = s.timestamp || new Date().toISOString();
+
+    // Temperature card
+    document.getElementById("val-temp").innerHTML =
+      `${temp}<span class="card-unit">°C</span>`;
+    document.getElementById("sub-temp").textContent =
+      parseFloat(temp) > 40 ? "⚠ Above threshold!" : "Normal range";
+    setCardState("card-temp", parseFloat(temp) > 40 ? "danger" : parseFloat(temp) > 35 ? "warning" : "safe");
+
+    // Humidity card
+    document.getElementById("val-hum").innerHTML =
+      `${hum}<span class="card-unit">%</span>`;
+    setCardState("card-hum", "safe");
+
+    // Flame card
+    document.getElementById("val-flame").innerHTML =
+      `<span class="status-dot ${flame ? "active" : ""}"></span>${flame ? "DETECTED" : "CLEAR"}`;
+    document.getElementById("sub-flame").textContent =
+      flame ? "⚠ Flame sensor triggered!" : "No flame detected";
+    setCardState("card-flame", flame ? "danger" : "safe");
+
+    // Gas card
+    document.getElementById("val-gas").innerHTML =
+      `<span class="status-dot ${gas ? "active" : ""}"></span>${gas ? "DETECTED" : "CLEAR"}`;
+    document.getElementById("sub-gas").textContent =
+      gas ? "⚠ Gas leak detected!" : "Air quality normal";
+    setCardState("card-gas", gas ? "danger" : "safe");
+
+    // Chart update
+    const timeLabel = formatTime(ts);
+    chartLabels.push(timeLabel);
+    chartData.push(parseFloat(temp));
+    if (chartLabels.length > MAX_POINTS) {
+      chartLabels.shift();
+      chartData.shift();
+    }
+    tempChart.update();
+
+    // Last updated
+    document.getElementById("last-updated").textContent = formatTime(ts);
+  });
+
+  // ── Alert Listener ───────────────────────────────────────────────────────────
+  const banner      = document.getElementById("alert-banner");
+  const statusBadge = document.getElementById("status-badge");
+
+  db.ref("/alert").on("value", (snap) => {
+    const a = snap.val();
+    if (!a) return;
+
+    const isAlert = a.active === true;
+    const time    = formatTime(a.timestamp);
+    const reason  = a.reason || "UNKNOWN";
+
+    if (isAlert) {
+      banner.classList.add("show");
+      statusBadge.textContent = "● ALERT";
+      statusBadge.className   = "alert";
+      document.body.style.setProperty("--bg", "#1a0a0a");
+      addLogEntry(reason.replace(/_/g, " "), false, time);
+    } else {
+      banner.classList.remove("show");
+      statusBadge.textContent = "● SAFE";
+      statusBadge.className   = "safe";
+      document.body.style.setProperty("--bg", "#0d1117");
+      if (logInitialized) addLogEntry("System returned to safe state", true, time);
+    }
+  });
+
+  // ── Alert Log from Backend ───────────────────────────────────────────────────
+  // Fetch historical alert log from backend API on load
+  fetch("/api/alerts")
+    .then((r) => r.json())
+    .then(({ data }) => {
+      if (!data || !data.length) return;
+      data.forEach((entry) => {
+        addLogEntry(
+          `${(entry.reason || "").replace(/_/g, " ")} — Temp: ${entry.temperature}°C`,
+          false,
+          formatTime(entry.timestamp)
+        );
+      });
+    })
+    .catch(() => {}); // silently fail if backend not running
+</script>
+</body>
+</html>
